@@ -1,35 +1,66 @@
 pcall(function()
- if queue_on_teleport and readfile then
-  local _src=debug.getinfo(1,"S").source
-  if _src then
-   _src=_src:match("@(.+)$")or _src
-   local _fname=_src:match("([^/\\]+)$")or _src
-   local _code=readfile(_fname)
-   if _code then queue_on_teleport(_code)end
+ if queue_on_teleport then
+  local _ok,_code=false,nil
+  if readfile and debug and debug.getinfo then
+   local _src=debug.getinfo(1,"S").source
+   if _src then
+    _src=_src:match("@(.+)$")or _src
+    local _fname=_src:match("([^/\\]+)$")or _src
+    _ok,_code=pcall(readfile,_fname)
+   end
+  end
+  if not _ok or not _code then
+   pcall(function()
+    local _paths={"dq_whitelist.lua","autoexec/dq_whitelist.lua","scripts/dq_whitelist.lua"}
+    for _,_p in ipairs(_paths)do
+     local _s=pcall(readfile,_p)
+     if _s then _code=readfile(_p)break end
+    end
+   end)
+  end
+  if _code then
+   queue_on_teleport(_code)
+  else
+   queue_on_teleport('loadstring(game:HttpGet("https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/dq_whitelist.lua"))()')
   end
  end
 end)
 local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/'
-local _b=loadstring(game:HttpGet(_a..'Library.lua'))()
-local _c=loadstring(game:HttpGet(_a..'addons/SaveManager.lua'))()
-local _d=loadstring(game:HttpGet(_a..'addons/ThemeManager.lua'))()
+local function _load(url)
+ for i=1,5 do
+  local _ok,_fn=pcall(loadstring,game:HttpGet(url))
+  if _ok and _fn then return _fn end
+  task.wait(1)
+ end
+ return nil
+end
+local _b=_load(_a..'Library.lua')
+if not _b then error('[DQ] Failed to load Library.lua after 5 attempts')end
+local _c=_load(_a..'addons/SaveManager.lua')
+if not _c then error('[DQ] Failed to load SaveManager.lua after 5 attempts')end
+local _d=_load(_a..'addons/ThemeManager.lua')
+if not _d then error('[DQ] Failed to load ThemeManager.lua after 5 attempts')end
 local _e=_b:CreateWindow({Title="DQ Whitelist",Center=true,AutoShow=true})
 local _f=_e:AddTab("Whitelist")
 local _g=_e:AddTab("UI Settings")
-local _h=_f:AddLeftGroupbox("Whitelist")
-local _i=_f:AddRightGroupbox("Send Join Request")
-local _j=_f:AddLeftGroupbox("Auto Start")
-local _k=_f:AddRightGroupbox("Auto Accept")
-_h:AddInput("WhitelistNames",{Default="",Numeric=false,Finished=false,Text="Names (comma separated)",Placeholder="player1, player2"})
-_h:AddToggle("AutoWhitelist",{Text="Auto Whitelist",Default=false,Callback=function(v)_G.z1=v end})
-_h:AddButton({Text="Whitelist Now",Func=function()_f1()end})
-_i:AddInput("JoinUsername",{Default="",Numeric=false,Finished=false,Text="Username",Placeholder="player"})
-_i:AddToggle("AutoJoin",{Text="Auto join request",Default=false,Callback=function(v)_G.z2=v end})
-_i:AddButton({Text="Send Join Request",Func=function()_f2()end})
-_j:AddInput("RequiredAccounts",{Default="",Numeric=false,Finished=false,Text="Required accounts (comma separated)",Placeholder="player1, player2"})
-_j:AddToggle("AutoStart",{Text="Auto Start",Default=false,Callback=function(v)_G.z3=v end})
-_k:AddInput("AcceptNames",{Default="",Numeric=false,Finished=false,Text="Accept names (blank = all)",Placeholder="player1, player2"})
-_k:AddToggle("AutoAccept",{Text="Auto accept join requests",Default=false,Callback=function(v)_G.z4=v end})
+local _G1=_f:AddLeftGroupbox("Whitelist")
+local _G2=_f:AddRightGroupbox("Send Join Request")
+local _G3=_f:AddLeftGroupbox("Auto Start")
+local _G4=_f:AddRightGroupbox("Auto Accept")
+local _G5=_f:AddLeftGroupbox("Auto Join Party")
+_G1:AddInput("WhitelistNames",{Default="",Numeric=false,Finished=false,Text="Names (comma separated)",Placeholder="player1, player2"})
+_G1:AddToggle("AutoWhitelist",{Text="Auto Whitelist",Default=false,Callback=function(v)_G.z1=v end})
+_G1:AddButton({Text="Whitelist Now",Func=function()_f1()end})
+_G2:AddInput("JoinUsername",{Default="",Numeric=false,Finished=false,Text="Username",Placeholder="player"})
+_G2:AddToggle("AutoJoin",{Text="Auto join request",Default=false,Callback=function(v)_G.z2=v end})
+_G2:AddButton({Text="Send Join Request",Func=function()_f2()end})
+_G3:AddInput("RequiredAccounts",{Default="",Numeric=false,Finished=false,Text="Required accounts (comma separated)",Placeholder="player1, player2"})
+_G3:AddToggle("AutoStart",{Text="Auto Start",Default=false,Callback=function(v)_G.z3=v end})
+_G4:AddInput("AcceptNames",{Default="",Numeric=false,Finished=false,Text="Accept names (blank = all)",Placeholder="player1, player2"})
+_G4:AddToggle("AutoAccept",{Text="Auto accept join requests",Default=false,Callback=function(v)_G.z4=v end})
+_G5:AddInput("PartyOwner",{Default="",Numeric=false,Finished=false,Text="Lobby owner username",Placeholder="Volkowns"})
+_G5:AddToggle("AutoJoinParty",{Text="Auto join party",Default=false,Callback=function(v)_G.z5=v end})
+_G5:AddButton({Text="Join Now",Func=function()_f5()end})
 local function _remotes()
  local _r=pcall(function()return game:GetService("ReplicatedStorage"):WaitForChild("remotes",5)end)
  if _r then return game:GetService("ReplicatedStorage"):FindFirstChild("remotes")end
@@ -70,6 +101,23 @@ function _f2()
  local _x,_y,_z=pcall(function()return _w:InvokeServer(_v)end)
  return _x and _y,_z
 end
+function _f5()
+ local _owner=Options.PartyOwner.Value
+ if not _owner or _owner==""then return end
+ local _rem=_remotes()
+ if not _rem then return end
+ local _join=pcall(function()return _rem:WaitForChild("joinDungeon",3)end)
+ local _joinR=_rem:FindFirstChild("joinDungeon")
+ if not _joinR then return end
+ local _inLobby=workspace:FindFirstChild("games")and workspace.games:FindFirstChild("inLobby")
+ if not _inLobby then return end
+ for _,_lobby in ipairs(_inLobby:GetChildren())do
+  if _lobby.Name:lower()==_owner:lower()then
+   pcall(function()_joinR:InvokeServer(_lobby.Name)end)
+   return
+  end
+ end
+end
 local _acceptConn=nil
 local function _connectAccept()
  if _acceptConn then pcall(function()_acceptConn:Disconnect()end)_acceptConn=nil end
@@ -104,14 +152,14 @@ Options.JoinUsername:OnChanged(function()pcall(function()_c:Save()end)end)
 Options.AcceptNames:OnChanged(function()pcall(function()_c:Save()end)end)
 Options.RequiredAccounts:OnChanged(function()pcall(function()_c:Save()end)end)
 Toggles.AutoStart:OnChanged(function()pcall(function()_c:Save()end)end)
+Options.PartyOwner:OnChanged(function()pcall(function()_c:Save()end)end)
+Toggles.AutoJoinParty:OnChanged(function()pcall(function()_c:Save()end)end)
 task.spawn(function()
  while true do
   if _G.z1 then pcall(_f1)end
-  if _G.z2 then
-   local _N,_O=pcall(_f2)
-   if _N and _O then _G.z2=false end
-  end
+  if _G.z2 then pcall(_f2)end
   if _G.z3 then pcall(_f3)end
+  if _G.z5 then pcall(_f5)end
   _connectAccept()
   task.wait(2)
  end
