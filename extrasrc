@@ -29,7 +29,7 @@ local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/
 local function _load(url)
  for i=1,5 do
   local _ok,_fn=pcall(loadstring,game:HttpGet(url))
-  if _ok and _fn then return _fn end
+  if _ok and _fn then return _fn()end
   task.wait(1)
  end
  return nil
