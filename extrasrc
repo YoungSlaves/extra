@@ -25,21 +25,11 @@ pcall(function()
   end
  end
 end)
+task.wait(2)
 local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/'
-local function _load(url)
- for i=1,5 do
-  local _ok,_fn=pcall(loadstring,game:HttpGet(url))
-  if _ok and _fn then return _fn()end
-  task.wait(1)
- end
- return nil
-end
-local _b=_load(_a..'Library.lua')
-if not _b then error('[DQ] Failed to load Library.lua after 5 attempts')end
-local _c=_load(_a..'addons/SaveManager.lua')
-if not _c then error('[DQ] Failed to load SaveManager.lua after 5 attempts')end
-local _d=_load(_a..'addons/ThemeManager.lua')
-if not _d then error('[DQ] Failed to load ThemeManager.lua after 5 attempts')end
+local _b=loadstring(game:HttpGet(_a..'Library.lua'))()
+local _c=loadstring(game:HttpGet(_a..'addons/SaveManager.lua'))()
+local _d=loadstring(game:HttpGet(_a..'addons/ThemeManager.lua'))()
 local _e=_b:CreateWindow({Title="DQ Whitelist",Center=true,AutoShow=true})
 local _f=_e:AddTab("Whitelist")
 local _g=_e:AddTab("UI Settings")
