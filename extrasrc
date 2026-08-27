@@ -30,7 +30,7 @@ local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/
 local _b=loadstring(game:HttpGet(_a..'Library.lua'))()
 local _c=loadstring(game:HttpGet(_a..'addons/SaveManager.lua'))()
 local _d=loadstring(game:HttpGet(_a..'addons/ThemeManager.lua'))()
-local _e=_b:CreateWindow({Title="DQ Whitelist",Center=true,AutoShow=true})
+local _e=_b:CreateWindow({Title="aphalia - dexori addon",Center=true,AutoShow=true})
 local _f=_e:AddTab("Whitelist")
 local _g=_e:AddTab("UI Settings")
 local _G1=_f:AddLeftGroupbox("Whitelist")
