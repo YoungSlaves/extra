@@ -1,0 +1,106 @@
+local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/'
+local _b=loadstring(game:HttpGet(_a..'Library.lua'))()
+local _c=loadstring(game:HttpGet(_a..'addons/SaveManager.lua'))()
+local _d=loadstring(game:HttpGet(_a..'addons/ThemeManager.lua'))()
+local _e=_b:CreateWindow({Title="DQ Whitelist",Center=true,AutoShow=true})
+local _f=_e:AddTab("Whitelist")
+local _g=_e:AddTab("UI Settings")
+local _h=_f:AddLeftGroupbox("Whitelist")
+local _i=_f:AddRightGroupbox("Send Join Request")
+local _j=_f:AddLeftGroupbox("Auto Start")
+local _k=_f:AddRightGroupbox("Auto Accept")
+_h:AddInput("WhitelistNames",{Default="",Numeric=false,Finished=false,Text="Names (comma separated)",Placeholder="player1, player2"})
+_h:AddToggle("AutoWhitelist",{Text="Auto Whitelist",Default=false,Callback=function(v)_G.z1=v end})
+_h:AddButton({Text="Whitelist Now",Func=function()_f1()end})
+_i:AddInput("JoinUsername",{Default="",Numeric=false,Finished=false,Text="Username",Placeholder="player"})
+_i:AddToggle("AutoJoin",{Text="Auto join request",Default=false,Callback=function(v)_G.z2=v end})
+_i:AddButton({Text="Send Join Request",Func=function()_f2()end})
+_j:AddInput("RequiredAccounts",{Default="",Numeric=false,Finished=false,Text="Required accounts (comma separated)",Placeholder="player1, player2"})
+_j:AddToggle("AutoStart",{Text="Auto Start",Default=false,Callback=function(v)_G.z3=v end})
+_k:AddInput("AcceptNames",{Default="",Numeric=false,Finished=false,Text="Accept names (blank = all)",Placeholder="player1, player2"})
+_k:AddToggle("AutoAccept",{Text="Auto accept join requests",Default=false,Callback=function(v)_G.z4=v end})
+function _f1()
+ local _l=Options.WhitelistNames.Value
+ if not _l or _l==""then return end
+ local _m={}
+ for _n in _l:gsub("%s+",""):gmatch("([^,]+)")do table.insert(_m,_n)end
+ local _o=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+ if _o then _o=_o:FindFirstChild("addPlayerToWhitelist")end
+ if not _o then return end
+ for _,_p in ipairs(_m)do pcall(function()_o:FireServer(_p)end)end
+end
+function _f3()
+ local _q=Options.RequiredAccounts.Value
+ if _q and _q~=""then
+  local _r=game:GetService("Players"):GetPlayers()
+  for _s in _q:gsub("%s+",""):gmatch("([^,]+)")do
+   local _t=false
+   for _,_u in ipairs(_r)do if _u.Name:lower()==_s:lower()then _t=true;break end end
+   if not _t then return end
+  end
+ end
+ pcall(function()game:GetService("ReplicatedStorage").remotes.changeStartValue:FireServer()end)
+end
+function _f2()
+ local _v=Options.JoinUsername.Value
+ if not _v or _v==""then return end
+ local _w=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+ if _w then _w=_w:FindFirstChild("sendJoinRequest")end
+ if not _w then return end
+ local _x,_y,_z=pcall(function()return _w:InvokeServer(_v)end)
+ return _x and _y,_z
+end
+local _A=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+local _B=_A and _A:FindFirstChild("showJoinRequest")
+local _C=_A and _A:FindFirstChild("respondJoinRequest")
+if _B and _C then
+ _B.OnClientEvent:Connect(function(_D,_E,_F,_G2,_H)
+  if not _G.z4 or _F=="close"or type(_D)~="string"then return end
+  local _I=Options.AcceptNames.Value
+  if _I and _I~=""then
+   local _J=_E
+   for _,_K in ipairs(game:GetService("Players"):GetPlayers())do
+    if _K.DisplayName:lower()==_E:lower()then _J=_K.Name;break end
+   end
+   local _L=false
+   for _M in _I:gsub("%s+",""):gmatch("([^,]+)")do
+    if _M:lower()==_J:lower()then _L=true;break end
+   end
+   if not _L then return end
+  end
+  pcall(function()_C:FireServer(_D,true)end)
+ end)
+end
+Toggles.AutoWhitelist:OnChanged(function()pcall(function()_c:Save()end)end)
+Options.WhitelistNames:OnChanged(function()pcall(function()_c:Save()end)end)
+Toggles.AutoJoin:OnChanged(function()pcall(function()_c:Save()end)end)
+Toggles.AutoAccept:OnChanged(function()pcall(function()_c:Save()end)end)
+Options.JoinUsername:OnChanged(function()pcall(function()_c:Save()end)end)
+Options.AcceptNames:OnChanged(function()pcall(function()_c:Save()end)end)
+Options.RequiredAccounts:OnChanged(function()pcall(function()_c:Save()end)end)
+Toggles.AutoStart:OnChanged(function()pcall(function()_c:Save()end)end)
+task.spawn(function()
+ while true do
+  if _G.z1 then pcall(_f1)end
+  if _G.z2 then
+   local _N,_O=pcall(_f2)
+   if _N and _O then _G.z2=false end
+  end
+  if _G.z3 then pcall(_f3)end
+  task.wait(2)
+ end
+end)
+_d:SetLibrary(_b)
+_c:SetLibrary(_b)
+_c:IgnoreThemeSettings()
+_c:SetIgnoreIndexes({"MenuKeybind"})
+_d:SetFolder("DQWhitelist")
+_c:SetFolder("DQWhitelist/configs")
+_c:BuildConfigSection(_g)
+_d:ApplyToTab(_g)
+local _P=_g:AddLeftGroupbox("Menu")
+_P:AddButton({Text="Unload",Func=function()_b:Unload()end})
+_P:AddButton({Text="Reset Autoload",Func=function()pcall(function()delfile("DQWhitelist/configs/autoload.txt")end)end})
+_P:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",{Default="End",NoUI=true,Text="Menu key bind"})
+_b.ToggleKeybind=Options.MenuKeybind
+_c:LoadAutoloadConfig()
