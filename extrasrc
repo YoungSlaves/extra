@@ -1,3 +1,14 @@
+pcall(function()
+ if queue_on_teleport and readfile then
+  local _src=debug.getinfo(1,"S").source
+  if _src then
+   _src=_src:match("@(.+)$")or _src
+   local _fname=_src:match("([^/\\]+)$")or _src
+   local _code=readfile(_fname)
+   if _code then queue_on_teleport(_code)end
+  end
+ end
+end)
 local _a='https://raw.githubusercontent.com/YoungSlaves/LinoriaLib-patched/main/'
 local _b=loadstring(game:HttpGet(_a..'Library.lua'))()
 local _c=loadstring(game:HttpGet(_a..'addons/SaveManager.lua'))()
@@ -19,12 +30,17 @@ _j:AddInput("RequiredAccounts",{Default="",Numeric=false,Finished=false,Text="Re
 _j:AddToggle("AutoStart",{Text="Auto Start",Default=false,Callback=function(v)_G.z3=v end})
 _k:AddInput("AcceptNames",{Default="",Numeric=false,Finished=false,Text="Accept names (blank = all)",Placeholder="player1, player2"})
 _k:AddToggle("AutoAccept",{Text="Auto accept join requests",Default=false,Callback=function(v)_G.z4=v end})
+local function _remotes()
+ local _r=pcall(function()return game:GetService("ReplicatedStorage"):WaitForChild("remotes",5)end)
+ if _r then return game:GetService("ReplicatedStorage"):FindFirstChild("remotes")end
+ return nil
+end
 function _f1()
  local _l=Options.WhitelistNames.Value
  if not _l or _l==""then return end
  local _m={}
  for _n in _l:gsub("%s+",""):gmatch("([^,]+)")do table.insert(_m,_n)end
- local _o=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+ local _o=_remotes()
  if _o then _o=_o:FindFirstChild("addPlayerToWhitelist")end
  if not _o then return end
  for _,_p in ipairs(_m)do pcall(function()_o:FireServer(_p)end)end
@@ -39,22 +55,30 @@ function _f3()
    if not _t then return end
   end
  end
- pcall(function()game:GetService("ReplicatedStorage").remotes.changeStartValue:FireServer()end)
+ local _rem=_remotes()
+ if _rem then
+  local _csv=_rem:FindFirstChild("changeStartValue")
+  if _csv then pcall(function()_csv:FireServer()end)end
+ end
 end
 function _f2()
  local _v=Options.JoinUsername.Value
  if not _v or _v==""then return end
- local _w=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+ local _w=_remotes()
  if _w then _w=_w:FindFirstChild("sendJoinRequest")end
  if not _w then return end
  local _x,_y,_z=pcall(function()return _w:InvokeServer(_v)end)
  return _x and _y,_z
 end
-local _A=game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
-local _B=_A and _A:FindFirstChild("showJoinRequest")
-local _C=_A and _A:FindFirstChild("respondJoinRequest")
-if _B and _C then
- _B.OnClientEvent:Connect(function(_D,_E,_F,_G2,_H)
+local _acceptConn=nil
+local function _connectAccept()
+ if _acceptConn then pcall(function()_acceptConn:Disconnect()end)_acceptConn=nil end
+ local _A=_remotes()
+ if not _A then return end
+ local _B=_A:FindFirstChild("showJoinRequest")
+ local _C=_A:FindFirstChild("respondJoinRequest")
+ if not _B or not _C then return end
+ _acceptConn=_B.OnClientEvent:Connect(function(_D,_E,_F,_G2,_H)
   if not _G.z4 or _F=="close"or type(_D)~="string"then return end
   local _I=Options.AcceptNames.Value
   if _I and _I~=""then
@@ -71,6 +95,7 @@ if _B and _C then
   pcall(function()_C:FireServer(_D,true)end)
  end)
 end
+_connectAccept()
 Toggles.AutoWhitelist:OnChanged(function()pcall(function()_c:Save()end)end)
 Options.WhitelistNames:OnChanged(function()pcall(function()_c:Save()end)end)
 Toggles.AutoJoin:OnChanged(function()pcall(function()_c:Save()end)end)
@@ -87,6 +112,7 @@ task.spawn(function()
    if _N and _O then _G.z2=false end
   end
   if _G.z3 then pcall(_f3)end
+  _connectAccept()
   task.wait(2)
  end
 end)
