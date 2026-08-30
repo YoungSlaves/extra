@@ -7870,11 +7870,14 @@ local SpeedhackFn = function()
 	SafeLerpToward(goal, cap, 1 / 60)
 end
 
--- Noclip: disable collision ONLY on the HumanoidRootPart every frame. The root is
--- what the humanoid/local character collides with when walking, so turning it off
--- lets you pass through walls/windows while the feet/other parts stay solid — you
--- won't sink through floors. (Deepwoken also runs a server-side position check, so
--- on some servers you may still be snapped back; that part isn't bypassable client-side.)
+-- Noclip: disable collision on the HumanoidRootPart. Modern physics validates
+-- collision right after the render/stepped callbacks, so we flip it on RunService.Stepped
+-- (the connection below) so it is already off when the physics step checks it. The root is
+-- what the local character collides with when moving, so turning it off lets you pass walls
+-- while feet/other parts stay solid and you don't sink. IMPORTANT: Deepwoken ALSO does a
+-- server-side position check and will snap you back out of walls — client-only noclip cannot
+-- win that fight. True server-sided movement needs the game's movement remote (fill in
+-- MovementServerRemote below from a RemoteSpy session); see ServerNoclipAttempt.
 local NoclipFn = function()
 	local c, hrp, hum = GetRoot()
 	if not c or not hrp or not hum then return end
@@ -7884,16 +7887,45 @@ local NoclipFn = function()
 		hrp.CanCollide = true
 		return
 	end
-	-- keep feet/other parts solid, only flip the root
 	hrp.CanCollide = false
 end
 
--- Flight: world-space 3D movement with camera-relative WASD + space/ctrl up/down.
--- Routed through SafeLerpToward with noGlue so the bypass (sub-steps + velocity
--- resolver) stays consistent, but we don't get pulled back down to the floor.
+-- Called every physics step (before the server-side position evaluation of the frame).
+local noclipConn
+local function StartNoclip()
+	if noclipConn then return end
+	noclipConn = RunService.Stepped:Connect(function()
+		pcall(NoclipFn)
+	end)
+end
+local function StopNoclip()
+	if noclipConn then
+		pcall(noclipConn.Disconnect, noclipConn)
+		noclipConn = nil
+	end
+	pcall(Collisions, true) -- restore real collisions
+end
+
+-- Server-side noclip hook. Deepwoken's movement runs through a RemoteEvent/RemoteFunction.
+-- If you capture it with a RemoteSpy session (it varies by server/patch), put the Instance's
+-- path below and we will send the local position through it after moving, which is the only
+-- way to survive the server position check.
+--   EXAMPLE: local char = game:GetService("Players").LocalPlayer.Character
+--            ServerMovementRemote = char and char:WaitForChild("MovementSync", 1)
+local ServerMovementRemote
+
+-- --------------------------------------------------------------------------
+--  Flight — altitude anchor. Instead of fighting gravity with velocity every frame
+-- (which is why it drifted), we keep an absolute Y "anchor." Every step the root is
+-- re-pinned to that Y, so gravity physically cannot accumulate downward. Holding
+-- Space raises the anchor, holding Ctrl lowers it (with SmoothClimb off, instant).
+-- --------------------------------------------------------------------------
+local FlyAnchorY
 local FlightFn = function()
 	local c, hrp = GetRoot()
 	if not hrp then return end
+	local dt = 1 / 60
+	if not FlyAnchorY then FlyAnchorY = hrp.Position.Y end
 
 	local fwd = Camera.CFrame.LookVector
 	local right = Camera.CFrame.RightVector
@@ -7902,22 +7934,37 @@ local FlightFn = function()
 	if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - Vector3.new(fwd.X, 0, fwd.Z) end
 	if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - Vector3.new(right.X, 0, right.Z) end
 	if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + Vector3.new(right.X, 0, right.Z) end
-	if UIS:IsKeyDown(MovementExt.FlyUpKey) then move = move + Vector3.new(0, 1, 0) end
-	if UIS:IsKeyDown(MovementExt.FlyDownKey) then move = move - Vector3.new(0, 1, 0) end
 	if move.Magnitude > 0 then move = move.Unit * MovementExt.FlightSpeed end
 
-	local vel = move
-	local localDir = hrp.CFrame:VectorToObjectSpace(vel)
-	local goal = hrp.CFrame * CFrame.new(localDir * (1 / 60))
-	SafeLerpToward(goal, vel.Magnitude, 1 / 60, nil, true)
+	-- raise/lower the altitude anchor from climb/dive input
+	local vy = (UIS:IsKeyDown(MovementExt.FlyUpKey) and 1 or 0) - (UIS:IsKeyDown(MovementExt.FlyDownKey) and 1 or 0)
+	if vy ~= 0 then
+		FlyAnchorY = FlyAnchorY + vy * MovementExt.FlightSpeed * dt
+	end
 
-	-- Anti-gravity: the game adds downward velocity between our frames, which makes
-	-- you slowly sink. Override ONLY the vertical component so you hover (Y=0 when
-	-- idle, ±FlySpeed when climbing/diving) without double-counting horizontal motion.
+	local prev = hrp.Position
+
+	-- horizontal motion (bypass-smoothed)
+	if move.Magnitude > 0 then
+		local localDir = hrp.CFrame:VectorToObjectSpace(move)
+		local goal = hrp.CFrame * CFrame.new(localDir * dt)
+		SafeLerpToward(goal, move.Magnitude, dt, nil, true)
+	end
+
+	-- re-pin to the anchor so gravity can never pull us down
+	local dY = FlyAnchorY - hrp.Position.Y
+	if math.abs(dY) > 1e-4 then
+		hrp.CFrame = hrp.CFrame * CFrame.new(0, math.clamp(dY, -Options.MaxStep, Options.MaxStep), 0)
+	end
+
 	if Options.VelocityResolve then
-		local v = hrp.AssemblyLinearVelocity
-		hrp.AssemblyLinearVelocity = Vector3.new(v.X, move.Y, v.Z)
-		hrp.AssemblyAngularVelocity = Vector3.zero
+		ResolveVelocity(hrp, prev, dt, Options.SpeedCap + MovementExt.FlightSpeed)
+	end
+
+	-- Optional server sync: if ServerMovementRemote is filled in from a RemoteSpy session
+	-- and your game accepts a position payload, sending this keeps the server in agreement.
+	if ServerMovementRemote and move.Magnitude > 0 then
+		pcall(function() ServerMovementRemote:FireServer(hrp.Position) end)
 	end
 end
 
@@ -7985,14 +8032,9 @@ MoveTab:Line()
 
 MoveTab:Section("Noclip")
 Features.Noclip = {}
-MoveTab:Toggle("Noclip", "Walk through walls (client-side noclip)", false, function(v)
+MoveTab:Toggle("Noclip", "Walk through walls (client-side; see note)", false, function(v)
 	MovementExt.Noclip = v
-	if v then
-		StartLoop("Noclip", NoclipFn)
-	else
-		StopLoop("Noclip")
-		Collisions(true) -- restore real collisions
-	end
+	if v then StartNoclip() else StopNoclip() end
 end)
 MoveTab:Toggle("Noclip While Knocked Only", "Only strip collisions while knocked/ragdolled", false, function(v)
 	MovementExt.NoclipKnockedOnly = v
@@ -8002,16 +8044,21 @@ MoveTab:Line()
 
 MoveTab:Section("Flight")
 Features.Flight = {}
-MoveTab:Toggle("Flight", "Free 3D flight (WASD + Space up / Ctrl down)", false, function(v)
-	MovementExt.Flight = v
-	if v then StartLoop("Flight", FlightFn) else StopLoop("Flight") end
-end)
+local function SetFlight(on)
+	MovementExt.Flight = on
+	if on then
+		FlyAnchorY = nil -- re-acquire altitude anchor on enable
+		StartLoop("Flight", FlightFn)
+	else
+		StopLoop("Flight")
+	end
+end
+MoveTab:Toggle("Flight", "Free 3D flight (WASD + Space up / Ctrl down)", false, SetFlight)
 MoveTab:Slider("Fly Speed", "Flight speed (studs/sec)", 10, 120, function(v)
 	MovementExt.FlightSpeed = v
 end):SetValue(40)
 MoveTab:KeyBind("Flight Toggle", "Press bound key to toggle flight", "F", function()
-	MovementExt.Flight = not MovementExt.Flight
-	if MovementExt.Flight then StartLoop("Flight", FlightFn) else StopLoop("Flight") end
+	SetFlight(not MovementExt.Flight)
 end)
 
 MoveTab:Line()
@@ -8050,7 +8097,7 @@ local function Unload()
 		end
 	end
 	ESP.Drawings = {}
-	pcall(Collisions, true) -- restore real collisions if noclip was active
+	StopNoclip() -- disconnects the physics hook and restores real collisions
 	MovementExt.Noclip = false
 	MovementExt.Flight = false
 	MovementExt.Speedhack = false
